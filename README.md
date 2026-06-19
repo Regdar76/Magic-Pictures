@@ -1,9 +1,11 @@
 # Magic Pictures
 
+<img src="icon.png" alt="App-Icon" width="96" align="right">
+
 Eine kleine Windows-Desktop-App zum Verkleinern von Bildern auf **HD/1080p** –
 mit optionaler Einblendung des **Aufnahmedatums**.
 
-![App-Icon](icon.png)
+![Screenshot der App](docs/screenshot.png)
 
 ## Funktionen
 
