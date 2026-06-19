@@ -2,6 +2,12 @@
 
 <img src="icon.png" alt="App-Icon" width="96" align="right">
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Platform](https://img.shields.io/badge/Plattform-Windows-blue)
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+
+*Read this in [English](README.en.md).*
+
 Eine kleine Windows-Desktop-App zum Verkleinern von Bildern auf **HD/1080p** –
 mit optionaler Einblendung des **Aufnahmedatums**.
 
@@ -51,3 +57,8 @@ python icon_erstellen.py
 | `icon_erstellen.py` | Generator für `icon.ico` / `icon.png` |
 | `Magic-Pictures starten.bat` | Start per Doppelklick (benötigt Python) |
 | `Portable-EXE bauen.bat` | Baut die portable EXE mit PyInstaller |
+
+## Lizenz
+
+Veröffentlicht unter der [MIT-Lizenz](LICENSE) – frei nutzbar, veränderbar und
+weitergebbar, ohne Gewährleistung.
