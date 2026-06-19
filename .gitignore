@@ -1,0 +1,18 @@
+# Build-Artefakte (werden lokal mit "Portable-EXE bauen.bat" erzeugt)
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Claude Code (lokale Tooling-Daten)
+.claude/
+
+# Betriebssystem
+Thumbs.db
+desktop.ini
+.DS_Store
