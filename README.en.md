@@ -30,7 +30,7 @@ optional **capture-date overlay**.
 Requires Python 3.10+ and [Pillow](https://pypi.org/project/pillow/).
 
 ```bash
-pip install pillow
+pip install -r requirements.txt
 python magic_pictures.py
 ```
 
@@ -58,6 +58,7 @@ python icon_erstellen.py
 | `icon_erstellen.py` | Generator for `icon.ico` / `icon.png` |
 | `Magic-Pictures starten.bat` | Double-click launcher (requires Python) |
 | `Portable-EXE bauen.bat` | Builds the portable EXE with PyInstaller |
+| `requirements.txt` | Python dependencies (Pillow) |
 
 ## License
 

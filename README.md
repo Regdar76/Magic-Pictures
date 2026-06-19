@@ -30,7 +30,7 @@ mit optionaler Einblendung des **Aufnahmedatums**.
 Voraussetzung: Python 3.10+ und [Pillow](https://pypi.org/project/pillow/).
 
 ```bash
-pip install pillow
+pip install -r requirements.txt
 python magic_pictures.py
 ```
 
@@ -57,6 +57,7 @@ python icon_erstellen.py
 | `icon_erstellen.py` | Generator für `icon.ico` / `icon.png` |
 | `Magic-Pictures starten.bat` | Start per Doppelklick (benötigt Python) |
 | `Portable-EXE bauen.bat` | Baut die portable EXE mit PyInstaller |
+| `requirements.txt` | Python-Abhängigkeiten (Pillow) |
 
 ## Lizenz
 
