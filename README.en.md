@@ -15,19 +15,25 @@ optional **capture-date overlay**.
 
 ## Features
 
-- 📂 **Import / select images** (multi-selection)
+- 📂 **Import / select images** (multi-selection) or **drag & drop** them
+  onto the list (folders work too)
 - 📅 Optionally burn the **capture date** (from EXIF) into the image
   - choose the **corner** (top/bottom, left/right)
   - choose the **text color**
-- 💾 Freely selectable **output folder**
+- 💾 Freely selectable **output folder** – suggested automatically as an `HD`
+  subfolder next to your images; **open it with one click** when done
 - 🖼️ Output in **HD quality** (max. 1920 × 1080, aspect ratio preserved)
 - 🎚️ Quality defaults to **80** (≈ max. 20 % quality loss) and can be set
   **manually** (1–100)
+- 🛡️ Transparent PNGs get a **white background**; images with the same file
+  name from different folders **never overwrite each other**
 
 ## Running
 
 ### Option A – with Python installed
-Requires Python 3.10+ and [Pillow](https://pypi.org/project/pillow/).
+Requires Python 3.10+, [Pillow](https://pypi.org/project/pillow/) and
+[tkinterdnd2](https://pypi.org/project/tkinterdnd2/) (only needed for
+drag & drop – the app runs fine without it).
 
 ```bash
 pip install -r requirements.txt
@@ -58,7 +64,7 @@ python icon_erstellen.py
 | `icon_erstellen.py` | Generator for `icon.ico` / `icon.png` |
 | `Magic-Pictures starten.bat` | Double-click launcher (requires Python) |
 | `Portable-EXE bauen.bat` | Builds the portable EXE with PyInstaller |
-| `requirements.txt` | Python dependencies (Pillow) |
+| `requirements.txt` | Python dependencies (Pillow, tkinterdnd2) |
 
 ## License
 

@@ -5,8 +5,9 @@ REM  Ergebnis liegt danach im Ordner "dist".
 REM ============================================================
 cd /d "%~dp0"
 
-echo PyInstaller wird sichergestellt...
+echo PyInstaller und Abhaengigkeiten werden sichergestellt...
 python -m pip install --upgrade pyinstaller >nul 2>&1
+python -m pip install -r requirements.txt >nul 2>&1
 
 echo.
 echo Baue portable EXE - bitte warten...
@@ -16,6 +17,8 @@ python -m PyInstaller ^
     --windowed ^
     --name "Magic-Pictures" ^
     --icon "%~dp0icon.ico" ^
+    --add-data "%~dp0icon.ico;." ^
+    --collect-all tkinterdnd2 ^
     --distpath "dist" ^
     --workpath "build" ^
     --specpath "build" ^

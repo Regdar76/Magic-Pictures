@@ -5,23 +5,32 @@ Eine kleine Desktop-App zum Verkleinern von Bildern auf HD/1080p mit
 optionaler Einblendung des Aufnahmedatums.
 
 Funktionen:
-  * Bilder importieren / auswaehlen (Mehrfachauswahl)
+  * Bilder importieren / auswaehlen (Mehrfachauswahl oder Drag & Drop)
   * Aufnahmedatum (aus EXIF) optional ins Bild einblenden
       - Auswahl der Ecke (oben/unten, links/rechts)
       - Auswahl der Textfarbe
-  * Ausgabeordner frei waehlbar
+  * Ausgabeordner frei waehlbar (Vorschlag: Unterordner "HD" neben den Bildern)
   * Ausgabe in HD-Qualitaet (max. 1920 x 1080, Seitenverhaeltnis bleibt erhalten)
   * Qualitaet standardmaessig 80 (entspricht max. ~20 % Qualitaetsverlust)
   * Qualitaet bei Bedarf manuell einstellbar (1 - 100)
 """
 
 import os
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, colorchooser, messagebox, ttk
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
-from PIL.ExifTags import TAGS
+
+# Drag & Drop ist optional - ohne tkinterdnd2 laeuft die App normal weiter
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+    DND_VERFUEGBAR = True
+except Exception:
+    DND_VERFUEGBAR = False
+
+__version__ = "1.1.0"
 
 # ----------------------------------------------------------------------------
 # Konstanten
@@ -39,6 +48,13 @@ ECKEN = {
 }
 
 
+def ressourcen_pfad(dateiname):
+    """Pfad zu einer mitgelieferten Datei (z. B. icon.ico) - funktioniert im
+    Quellcode-Betrieb und in der portablen PyInstaller-EXE (sys._MEIPASS)."""
+    basis = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(basis, dateiname)
+
+
 # ----------------------------------------------------------------------------
 # Bildverarbeitung
 # ----------------------------------------------------------------------------
@@ -49,15 +65,15 @@ def aufnahmedatum_lesen(bild):
         exif = bild.getexif()
         if not exif:
             return None
-        # 36867 = DateTimeOriginal, 306 = DateTime (Fallback)
-        for tag_id in (36867, 306):
-            wert = exif.get(tag_id)
-            if wert:
-                # Format aus EXIF: "JJJJ:MM:TT HH:MM:SS"
-                datum_teil = str(wert).split(" ")[0]
-                jahr, monat, tag = datum_teil.split(":")
-                return f"{tag}.{monat}.{jahr}"
-        return None
+        # 36867 = DateTimeOriginal - liegt im Exif-Sub-IFD (0x8769),
+        # nicht im Haupt-IFD. 306 = DateTime (Aenderungsdatum, Fallback).
+        wert = exif.get_ifd(0x8769).get(36867) or exif.get(306)
+        if not wert:
+            return None
+        # Format aus EXIF: "JJJJ:MM:TT HH:MM:SS"
+        datum_teil = str(wert).split(" ")[0]
+        jahr, monat, tag = datum_teil.split(":")
+        return f"{tag}.{monat}.{jahr}"
     except Exception:
         return None
 
@@ -69,10 +85,18 @@ def datum_einblenden(bild, text, ecke, farbe):
 
     # Schriftgroesse proportional zur Bildbreite
     schrift_groesse = max(int(breite / 38), 16)
-    try:
-        schrift = ImageFont.truetype("arial.ttf", schrift_groesse)
-    except Exception:
-        schrift = ImageFont.load_default()
+    schrift = None
+    for schrift_datei in ("arial.ttf", "segoeui.ttf"):
+        try:
+            schrift = ImageFont.truetype(schrift_datei, schrift_groesse)
+            break
+        except Exception:
+            pass
+    if schrift is None:
+        try:
+            schrift = ImageFont.load_default(size=schrift_groesse)  # Pillow >= 10.1
+        except TypeError:
+            schrift = ImageFont.load_default()
 
     # Textgroesse ermitteln
     box = zeichner.textbbox((0, 0), text, font=schrift)
@@ -97,7 +121,21 @@ def datum_einblenden(bild, text, ecke, farbe):
     return bild
 
 
-def bild_verarbeiten(pfad, ausgabe_ordner, datum_aktiv, ecke, farbe, qualitaet):
+def ausgabe_pfad_bestimmen(pfad, ausgabe_ordner, vergebene_namen):
+    """Baut den Ausgabedateinamen und haengt bei Namenskollisionen innerhalb
+    eines Durchlaufs (_2, _3, ...) an, damit nichts ueberschrieben wird."""
+    name = os.path.splitext(os.path.basename(pfad))[0]
+    kandidat = f"{name}_HD.jpg"
+    zaehler = 2
+    while kandidat.lower() in vergebene_namen:
+        kandidat = f"{name}_HD_{zaehler}.jpg"
+        zaehler += 1
+    vergebene_namen.add(kandidat.lower())
+    return os.path.join(ausgabe_ordner, kandidat)
+
+
+def bild_verarbeiten(pfad, ausgabe_ordner, datum_aktiv, ecke, farbe, qualitaet,
+                     vergebene_namen):
     """Verarbeitet ein einzelnes Bild: Drehung korrigieren, verkleinern,
     Datum einblenden, als JPEG speichern. Gibt den Ausgabepfad zurueck."""
     with Image.open(pfad) as bild:
@@ -107,9 +145,16 @@ def bild_verarbeiten(pfad, ausgabe_ordner, datum_aktiv, ecke, farbe, qualitaet):
         # EXIF-Orientierung beruecksichtigen (Hochformat korrekt drehen)
         bild = ImageOps.exif_transpose(bild)
 
-        # In RGB konvertieren (JPEG kann kein Alpha/Palette)
+        # In RGB konvertieren (JPEG kann kein Alpha/Palette).
+        # Transparente Bereiche landen auf weissem Hintergrund statt schwarz.
         if bild.mode != "RGB":
-            bild = bild.convert("RGB")
+            if "A" in bild.getbands() or "transparency" in bild.info:
+                bild = bild.convert("RGBA")
+                hintergrund = Image.new("RGB", bild.size, "white")
+                hintergrund.paste(bild, mask=bild.getchannel("A"))
+                bild = hintergrund
+            else:
+                bild = bild.convert("RGB")
 
         # Verkleinern auf max. 1920 x 1080, Seitenverhaeltnis bleibt erhalten
         bild.thumbnail((ZIEL_BREITE, ZIEL_HOEHE), Image.LANCZOS)
@@ -118,10 +163,7 @@ def bild_verarbeiten(pfad, ausgabe_ordner, datum_aktiv, ecke, farbe, qualitaet):
         if datum_aktiv and datum_text:
             bild = datum_einblenden(bild, datum_text, ecke, farbe)
 
-        # Ausgabedateiname zusammenbauen
-        name = os.path.splitext(os.path.basename(pfad))[0]
-        ausgabe_pfad = os.path.join(ausgabe_ordner, f"{name}_HD.jpg")
-
+        ausgabe_pfad = ausgabe_pfad_bestimmen(pfad, ausgabe_ordner, vergebene_namen)
         bild.save(ausgabe_pfad, "JPEG", quality=qualitaet, optimize=True)
     return ausgabe_pfad
 
@@ -132,9 +174,13 @@ def bild_verarbeiten(pfad, ausgabe_ordner, datum_aktiv, ecke, farbe, qualitaet):
 class MagicPicturesApp:
     def __init__(self, wurzel):
         self.wurzel = wurzel
-        wurzel.title("Magic Pictures - Bilder verkleinern")
+        wurzel.title(f"Magic Pictures {__version__} - Bilder verkleinern")
         wurzel.geometry("680x720")
         wurzel.minsize(620, 680)
+        try:
+            wurzel.iconbitmap(ressourcen_pfad("icon.ico"))
+        except Exception:
+            pass  # ohne Icon weiterlaufen (z. B. Datei fehlt)
 
         self.bilder = []                       # Liste der Eingabepfade
         self.farbe = "#FFFFFF"                  # Standard-Textfarbe (weiss)
@@ -163,6 +209,13 @@ class MagicPicturesApp:
         self.liste = tk.Listbox(liste_rahmen, height=7, yscrollcommand=scroll.set)
         self.liste.pack(side="left", fill="both", expand=True)
         scroll.config(command=self.liste.yview)
+
+        if DND_VERFUEGBAR:
+            self.liste.drop_target_register(DND_FILES)
+            self.liste.dnd_bind("<<Drop>>", self._ablage_verarbeiten)
+            ttk.Label(rahmen_bilder,
+                      text="Tipp: Bilder oder Ordner einfach in die Liste ziehen."
+                      ).pack(anchor="w", pady=(4, 0))
 
         knoepfe = ttk.Frame(rahmen_bilder)
         knoepfe.pack(fill="x", pady=(8, 0))
@@ -231,7 +284,11 @@ class MagicPicturesApp:
         rahmen_start.pack(fill="x", pady=(14, 0))
         self.start_knopf = ttk.Button(rahmen_start, text="Bilder verkleinern",
                                       command=self.verarbeitung_starten)
-        self.start_knopf.pack(fill="x")
+        self.start_knopf.pack(side="left", fill="x", expand=True)
+        self.ordner_knopf = ttk.Button(rahmen_start, text="Ausgabeordner oeffnen",
+                                       command=self.ausgabe_oeffnen,
+                                       state="disabled")
+        self.ordner_knopf.pack(side="left", padx=(6, 0))
 
         self.fortschritt = ttk.Progressbar(haupt, mode="determinate")
         self.fortschritt.pack(fill="x", pady=(10, 0))
@@ -261,11 +318,34 @@ class MagicPicturesApp:
             title="Bilder auswaehlen",
             filetypes=[("Bilder", " ".join(f"*{e}" for e in UNTERSTUETZTE_FORMATE)),
                        ("Alle Dateien", "*.*")])
+        self._bilder_aufnehmen(dateien)
+
+    def _bilder_aufnehmen(self, dateien):
+        """Nimmt Dateipfade in die Liste auf (ohne Duplikate) und schlaegt,
+        falls noch keiner gesetzt ist, einen Ausgabeordner vor."""
         for d in dateien:
             if d not in self.bilder:
                 self.bilder.append(d)
                 self.liste.insert("end", os.path.basename(d))
+        if self.bilder and not self.ausgabe_ordner.get().strip():
+            self.ausgabe_ordner.set(
+                os.path.join(os.path.dirname(self.bilder[0]), "HD"))
         self.status.config(text=f"{len(self.bilder)} Bild(er) ausgewaehlt.")
+
+    def _ablage_verarbeiten(self, ereignis):
+        """Drag & Drop: nimmt fallengelassene Bilddateien auf; bei Ordnern
+        werden die direkt enthaltenen Bilder uebernommen."""
+        dateien = []
+        for pfad in self.wurzel.tk.splitlist(ereignis.data):
+            if os.path.isdir(pfad):
+                for eintrag in sorted(os.listdir(pfad)):
+                    voll = os.path.join(pfad, eintrag)
+                    if (os.path.isfile(voll)
+                            and eintrag.lower().endswith(UNTERSTUETZTE_FORMATE)):
+                        dateien.append(voll)
+            elif pfad.lower().endswith(UNTERSTUETZTE_FORMATE):
+                dateien.append(pfad)
+        self._bilder_aufnehmen(dateien)
 
     def auswahl_entfernen(self):
         for index in reversed(self.liste.curselection()):
@@ -288,6 +368,11 @@ class MagicPicturesApp:
         ordner = filedialog.askdirectory(title="Ausgabeordner waehlen")
         if ordner:
             self.ausgabe_ordner.set(ordner)
+
+    def ausgabe_oeffnen(self):
+        ordner = self.ausgabe_ordner.get().strip()
+        if ordner and os.path.isdir(ordner):
+            os.startfile(ordner)
 
     def verarbeitung_starten(self):
         if not self.bilder:
@@ -319,18 +404,21 @@ class MagicPicturesApp:
         self.wurzel.after(0, lambda: self.fortschritt.config(maximum=gesamt, value=0))
 
         fehler_liste = []
+        vergebene_namen = set()
         for i, pfad in enumerate(list(self.bilder), start=1):
             name = os.path.basename(pfad)
             self.wurzel.after(0, lambda n=name, i=i: self.status.config(
                 text=f"Verarbeite {i}/{gesamt}: {n}"))
             try:
-                bild_verarbeiten(pfad, ordner, datum_aktiv, ecke, farbe, qualitaet)
+                bild_verarbeiten(pfad, ordner, datum_aktiv, ecke, farbe,
+                                 qualitaet, vergebene_namen)
             except Exception as fehler:
                 fehler_liste.append(f"{name}: {fehler}")
             self.wurzel.after(0, lambda i=i: self.fortschritt.config(value=i))
 
         def fertig():
             self.start_knopf.config(state="normal")
+            self.ordner_knopf.config(state="normal")
             if fehler_liste:
                 self.status.config(text=f"Fertig mit {len(fehler_liste)} Fehler(n).")
                 messagebox.showerror("Fehler bei einigen Bildern",
@@ -343,7 +431,7 @@ class MagicPicturesApp:
 
 
 def main():
-    wurzel = tk.Tk()
+    wurzel = TkinterDnD.Tk() if DND_VERFUEGBAR else tk.Tk()
     MagicPicturesApp(wurzel)
     wurzel.mainloop()
 
